@@ -27,18 +27,27 @@ import pandas as pd
 import pickle
 import json
 
+def haversine_vectorize(lon1, lat1, lon2, lat2): 
+    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2]) 
+    newlon = lon2 - lon1
+    newlat = lat2 - lat1 
+    haver_formula = np.sin(newlat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(newlon/2.0)**2
+ 
+    dist = 2 * np.arcsin(np.sqrt(haver_formula ))
+    km = 6367 * dist #6367 for distance in KM(radius of the Earth)
+    return round(km, 0)
 
-
-def _preprocess_data(data):
-    
+def alter_time(df):
     time_matrix = ['Placement_Time','Confirmation_Time', 
                    'Arrival_at_Pickup_Time', 'Pickup_Time']
     for i in time_matrix:
-        data[i] = pd.to_datetime(data[i]).dt.strftime('%H:%M:%S')
-        data[i] = pd.to_timedelta(data[i])
-        data[i] = data[i].dt.total_seconds()
+        df[i] = pd.to_datetime(df[i]).dt.strftime('%H:%M:%S')
+        df[i] = pd.to_timedelta(df[i])
+        df[i] = df[i].dt.total_seconds()
         
-    return data
+    return df
+
+def _preprocess_data(data):
     """Private helper function to preprocess data for model prediction.
 
     NB: If you have utilised feature engineering/selection in order to create
@@ -70,11 +79,74 @@ def _preprocess_data(data):
     # ---------------------------------------------------------------
 
     # ----------- Replace this code with your own preprocessing steps --------
-    predict_vector = feature_vector_df[['Pickup Lat','Pickup Long',
-                                        'Destination Lat','Destination Long']]
-    # ------------------------------------------------------------------------
+    
+    
+    #Test_df = feature_vector_df.copy(deep = True)
+    
+    Test_df = feature_vector_df
+    #for i in list(feature_vector_df.columns):
+        #print(i)
+    
+    Test_df.columns = Test_df.columns.str.replace(' ', '_')
 
-    return predict_vector
+    #Removing "-" from the feature labels.
+    Test_df.columns = Test_df.columns.str.replace('_-_', '_')
+
+    Test_df = Test_df.drop(['Vehicle_Type', 'User_Id', 'Vehicle_Type','Rider_Id'], axis = 1)
+
+    Test_df["Precipitation_in_millimeters"] = Test_df["Precipitation_in_millimeters"].fillna(0)
+
+    Test_df = Test_df.fillna(Test_df.mean())
+
+    Test_df = alter_time(Test_df)
+
+    Test_df['Placement_to_Confirmation_Time'] = Test_df['Confirmation_Time'] - Test_df['Placement_Time'] 
+
+    Test_df['Placement_to_Arrival_at_Pickup_Time'] = Test_df['Arrival_at_Pickup_Time'] - Test_df['Placement_Time'] 
+
+    Test_df['Placement_to_Pickup_Time'] = Test_df['Pickup_Time'] - Test_df['Placement_Time'] 
+
+    Test_df['Confirmation_to_Arrival_at_Pickup_Time'] = Test_df['Arrival_at_Pickup_Time'] - Test_df['Confirmation_Time'] 
+
+    Test_df['Confirmation_to_Pickup_Time'] = Test_df['Confirmation_Time'] - Test_df['Placement_Time'] 
+
+    Test_df['Arrival_at_Pickup_to_Pickup_Time'] = Test_df['Confirmation_Time'] - Test_df['Placement_Time']
+
+    distance_2 = haversine_vectorize(Test_df['Pickup_Lat'], 
+                                    Test_df['Pickup_Long'], 
+                                    Test_df['Destination_Lat'], 
+                                   Test_df['Destination_Long'])
+    Test_df['Actual_Distance_KM'] = distance_2
+
+    test_copy=Test_df.drop(['Order_No'], axis=1)
+    
+    #print(len(test_copy.columns))
+    
+    df_dummies_test = pd.get_dummies(test_copy)
+    
+    #print(len(df_dummies_test.columns))
+    
+        # Making sure that all the column names have correct format
+        # Test_df
+    df_dummies_test.columns = [col.replace(" ", "_") for col in df_dummies_test.columns]
+    df_dummies_test.columns = [col.replace("(Mo_=_1)","Mo_1") for col in df_dummies_test.columns]
+    df_dummies_test.columns = [col.replace("(KM)","KM") for col in df_dummies_test.columns]
+
+    # Reorder columns with the dependent variable (claim_amount) the last column
+        #column_titles = [col for col in df_dummies_train.columns if col !=
+                         #'Time_from_Pickup_to_Arrival'] + ['Time_from_Pickup_to_Arrival']
+
+    X_test = df_dummies_test.drop(['Confirmation_Day_of_Month',
+                    'Arrival_at_Pickup_Weekday_Mo_1',
+                    'Arrival_at_Pickup_Time', 
+                    'Pickup_Day_of_Month'], axis=1)
+    #print(X_test)
+    #for i in list(X_test.columns):
+        #print(i)
+    
+    
+    return X_test
+
 
 def load_model(path_to_model:str):
     """Adapter function to load our pretrained model into memory.
@@ -114,5 +186,7 @@ def make_prediction(data, model):
     prep_data = _preprocess_data(data)
     # Perform prediction with model and preprocessed data.
     prediction = model.predict(prep_data)
+    #print(prediction[0].tolist())
+
     # Format as list for output standerdisation.
     return prediction[0].tolist()
