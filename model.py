@@ -27,27 +27,18 @@ import pandas as pd
 import pickle
 import json
 
-def haversine_vectorize(lon1, lat1, lon2, lat2): 
-    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2]) 
-    newlon = lon2 - lon1
-    newlat = lat2 - lat1 
-    haver_formula = np.sin(newlat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(newlon/2.0)**2
- 
-    dist = 2 * np.arcsin(np.sqrt(haver_formula ))
-    km = 6367 * dist #6367 for distance in KM(radius of the Earth)
-    return round(km, 0)
 
-def alter_time(df):
+
+def _preprocess_data(data):
+    
     time_matrix = ['Placement_Time','Confirmation_Time', 
                    'Arrival_at_Pickup_Time', 'Pickup_Time']
     for i in time_matrix:
-        df[i] = pd.to_datetime(df[i]).dt.strftime('%H:%M:%S')
-        df[i] = pd.to_timedelta(df[i])
-        df[i] = df[i].dt.total_seconds()
+        data[i] = pd.to_datetime(data[i]).dt.strftime('%H:%M:%S')
+        data[i] = pd.to_timedelta(data[i])
+        data[i] = data[i].dt.total_seconds()
         
-    return df
-
-def _preprocess_data(data):
+    return data
     """Private helper function to preprocess data for model prediction.
 
     NB: If you have utilised feature engineering/selection in order to create
